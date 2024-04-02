@@ -41,12 +41,11 @@ public:
             threads[i] = threadClass(i);
         }
     }
-
     ~coreClass() {
         delete[] threads;
     }
 
-    void initializeQueues(bool* running_queue, std::vector<int>& waiting_queue, int threads_num,
+    void initializeQueues(bool* running_queue, int threads_num,
                           int& num_of_working_threads, int& num_of_running_threads) {
         num_of_working_threads = threads_num;
         num_of_running_threads = threads_num;
@@ -67,7 +66,7 @@ public:
 
 // Fetch and execute instructions for the most recently used thread
     void fetchAndExecuteInstruction(threadClass& thread, bool is_fineGrained, int& MRUThread, int switch_cycles,
-                                    int threads_num, int& cycles_num, int& num_of_running_threads, std::vector<int>& waiting_queue, bool* running_queue) {
+        int threads_num, int& cycles_num, int& num_of_running_threads, int& num_of_working_threads, std::vector<int>& waiting_queue, bool* running_queue) {
         if (!running_queue[MRUThread]) {
             // Find the next available running thread
             MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
@@ -76,6 +75,7 @@ public:
         // If the thread is running, execute the next instruction
         if (running_queue[MRUThread]) {
             Instruction inst;
+            inst_num++;
             SIM_MemInstRead(thread.inst_num++, &inst, MRUThread);
 
             switch (inst.opcode) {
@@ -133,7 +133,7 @@ public:
     }
 
 // Handle memory accesses and update thread states
-    void handleMemoryAccess(threadClass& thread, int& num_of_running_threads, vector<int>& waiting_queue, int& removed_thread) {
+    void handleMemoryAccess(threadClass& thread, int& num_of_running_threads, std::vector<int>& waiting_queue) {
         if (thread.latency > 0) {
             // Decrement latency for threads waiting for memory access
             thread.latency--;
@@ -142,9 +142,8 @@ public:
             if (thread.latency == 0) {
                 num_of_running_threads++;
                 thread.latency = -1; // Mark thread as ready
-                removed_thread = thread.tid;
                 for (auto it = waiting_queue.begin(); it != waiting_queue.end(); ++it) {
-                    if (*it == removed_thread) {
+                    if (*it == thread.tid) {
                         waiting_queue.erase(it);
                         break;
                     }
@@ -155,7 +154,7 @@ public:
 
 // Decrement latency of waiting threads and handle thread switching if necessary
     void decrementLatencyAndHandleSwitching(std::vector<int>& waiting_queue, bool* running_queue,
-                                            int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
+        int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
         // Decrement latency of waiting threads
         for (auto& thread_id : waiting_queue) {
             threadClass& thread = threads[thread_id];
@@ -197,15 +196,14 @@ public:
         std::vector<int> waiting_queue;
         int num_of_working_threads;
         int num_of_running_threads;
-        int MRUThread = 0;
-        int cycles_num = 0;
 
-        initializeQueues(running_queue, waiting_queue, threads_num, num_of_working_threads, num_of_running_threads);
+
+        initializeQueues(running_queue, threads_num, num_of_working_threads, num_of_running_threads);
 
         // Main execution loop
         while (num_of_working_threads > 0) {
             fetchAndExecuteInstruction(threads[MRUThread], is_fineGrained, MRUThread, switch_cycles,
-                                       threads_num, cycles_num, num_of_running_threads, waiting_queue, running_queue);
+                                       threads_num, cycles_num, num_of_running_threads, num_of_working_threads, waiting_queue, running_queue);
             handleMemoryAccess(threads[MRUThread], num_of_running_threads, waiting_queue);
             decrementLatencyAndHandleSwitching(waiting_queue, running_queue, num_of_running_threads,
                                                MRUThread, threads_num, switch_cycles, cycles_num);
@@ -215,19 +213,19 @@ public:
         delete[] running_queue;
     }
 
-}
+};
 
 coreClass* block_core;
 coreClass* finegrained_core;
 
 void CORE_BlockedMT() {
     block_core = new coreClass(SIM_GetThreadsNum(), false,SIM_GetSwitchCycles());
-    block_core->executeAllInstructions();
+    block_core->executeAllInstructions(block_core->threads,block_core->threads_num,block_core->is_fineGrained,block_core->switch_cycles);
 }
 
 void CORE_FinegrainedMT() {
     finegrained_core = new coreClass(SIM_GetThreadsNum(),true);
-    finegrained_core->executeAllInstructions();
+    finegrained_core->executeAllInstructions(finegrained_core->threads,finegrained_core->threads_num,finegrained_core->is_fineGrained,finegrained_core->switch_cycles);
 }
 
 double CORE_BlockedMT_CPI(){
