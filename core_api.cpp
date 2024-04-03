@@ -179,7 +179,7 @@ public:
         }
     }
 
-    void executeAllInstructions(threadClass* threads, int threads_num, bool is_fineGrained, int switch_cycles) {
+    void executeAllInstructions() {
         bool* running_queue = new bool[threads_num];
         std::vector<int> waiting_queue;
         int num_of_working_threads;
@@ -208,12 +208,12 @@ coreClass* finegrained_core;
 
 void CORE_BlockedMT() {
     block_core = new coreClass(SIM_GetThreadsNum(), false,SIM_GetSwitchCycles());
-    block_core->executeAllInstructions(block_core->threads,block_core->threads_num,block_core->is_fineGrained,block_core->switch_cycles);
+    block_core->executeAllInstructions();
 }
 
 void CORE_FinegrainedMT() {
     finegrained_core = new coreClass(SIM_GetThreadsNum(),true);
-    finegrained_core->executeAllInstructions(finegrained_core->threads,finegrained_core->threads_num,finegrained_core->is_fineGrained,finegrained_core->switch_cycles);
+    finegrained_core->executeAllInstructions();
 }
 
 double CORE_BlockedMT_CPI(){
