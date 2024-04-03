@@ -96,25 +96,26 @@ public:
                 case CMD_HALT:
                     running_queue[MRUThread] = false;
                     num_of_running_threads--;
+                    num_of_working_threads--;
                     break;
                 case CMD_LOAD: {
                     unsigned addr = thread.regs.reg[inst.src1_index] +
                                     (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
                     SIM_MemDataRead(addr, &(thread.regs.reg[inst.dst_index]));
-                    thread.latency = SIM_GetLoadLat(); // Set thread latency for memory load
+                    thread.latency = load_latency; // Set thread latency for memory load
                     running_queue[MRUThread] = false;
                     num_of_running_threads--;
-                    waiting_queue.push_back(MRUThread);
+                    //waiting_queue.push_back(MRUThread);
                     break;
                 }
                 case CMD_STORE: {
                     unsigned addr = thread.regs.reg[inst.dst_index] +
                                     (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
                     SIM_MemDataWrite(addr, thread.regs.reg[inst.src1_index]);
-                    thread.latency = SIM_GetStoreLat(); // Set thread latency for memory store
+                    thread.latency = store_latency; // Set thread latency for memory store
                     running_queue[MRUThread] = false;
                     num_of_running_threads--;
-                    waiting_queue.push_back(MRUThread);
+                    //waiting_queue.push_back(MRUThread);
                     break;
                 }
             }
@@ -133,59 +134,46 @@ public:
     }
 
 // Handle memory accesses and update thread states
-    void handleMemoryAccess(threadClass& thread, int& num_of_running_threads, std::vector<int>& waiting_queue) {
-        if (thread.latency > 0) {
-            // Decrement latency for threads waiting for memory access
-            thread.latency--;
-
-            // If latency reaches 0, mark thread as ready and remove from waiting_queue
-            if (thread.latency == 0) {
+    void handleMemoryAccess(bool* running_queue, int& num_of_running_threads, std::vector<int>& waiting_queue) {
+        int removed=-1;
+        if (threads[MRUThread].latency > 0){
+            removed=MRUThread;
+        }
+        auto it = waiting_queue.begin();
+        while (it != waiting_queue.end()) {
+            --threads[*it].latency;
+            if (threads[*it].latency <= 0) {
+                running_queue[*it] = true;
+                it = waiting_queue.erase(it); /// check may have error
                 num_of_running_threads++;
-                thread.latency = -1; // Mark thread as ready
-                for (auto it = waiting_queue.begin(); it != waiting_queue.end(); ++it) {
-                    if (*it == thread.tid) {
-                        waiting_queue.erase(it);
-                        break;
-                    }
-                }
             }
+            else
+                ++it;
+        }
+        if (removed >= 0) {
+            waiting_queue.push_back(removed);
         }
     }
 
 // Decrement latency of waiting threads and handle thread switching if necessary
     void decrementLatencyAndHandleSwitching(std::vector<int>& waiting_queue, bool* running_queue,
         int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
-        // Decrement latency of waiting threads
-        for (auto& thread_id : waiting_queue) {
-            threadClass& thread = threads[thread_id];
-            if (thread.latency > 0) {
-                thread.latency--;
-            }
-        }
 
         // Handle thread switching
         if (num_of_running_threads > 0 && !running_queue[MRUThread]) {
             MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
             if (!running_queue[MRUThread]) {
-                // If still no running thread found, add switch cycles
                 cycles_num += switch_cycles;
-                // Decrement switch cycles from waiting threads
-                for (auto& thread_id : waiting_queue) {
-                    threadClass& thread = threads[thread_id];
-                    if (thread.latency > 0) {
-                        thread.latency -= switch_cycles;
-                        if (thread.latency <= 0) {
-                            // If latency reaches 0, mark thread as ready and remove from waiting_queue
-                            num_of_running_threads++;
-                            thread.latency = -1; // Mark thread as ready
-                            for (auto it = waiting_queue.begin(); it != waiting_queue.end(); ++it) {
-                                if (*it == thread_id) {
-                                    waiting_queue.erase(it);
-                                    break;
-                                }
-                            }
-                        }
+                auto it = waiting_queue.begin();
+                while (it != waiting_queue.end()) {
+                    threads[*it].latency -= switch_cycles;
+                    if (threads[*it].latency <= 0) {
+                        running_queue[*it] = true;
+                        it = waiting_queue.erase(it);/// check may have error
+                        num_of_running_threads++;
                     }
+                    else
+                        ++it;
                 }
             }
         }
@@ -204,7 +192,7 @@ public:
         while (num_of_working_threads > 0) {
             fetchAndExecuteInstruction(threads[MRUThread], is_fineGrained, MRUThread, switch_cycles,
                                        threads_num, cycles_num, num_of_running_threads, num_of_working_threads, waiting_queue, running_queue);
-            handleMemoryAccess(threads[MRUThread], num_of_running_threads, waiting_queue);
+            handleMemoryAccess(running_queue, num_of_running_threads, waiting_queue);
             decrementLatencyAndHandleSwitching(waiting_queue, running_queue, num_of_running_threads,
                                                MRUThread, threads_num, switch_cycles, cycles_num);
             cycles_num++;
