@@ -49,7 +49,7 @@ class blockedMT {
             int prevthread = threadIndex;
             while(numOfWorkingThreads) {
                 Instruction currInst ;
-                if(workingThreads[threadIndex].done || workingThreads[threadIndex].latency != 0) {
+                if(workingThreads[threadIndex].done || workingThreads[threadIndex].latency > 0) {
                     prevthread = threadIndex;
                     threadIndex = (threadIndex+1)%numThreads;
                     busyThreadsCount++;
@@ -62,7 +62,7 @@ class blockedMT {
                 if(busyThreadsCount >= numThreads) {
                     //cout << "CMD_NOP" << endl;
                     for(int i = 0 ; i < numThreads ; i++) {
-                        if (workingThreads[i].latency != 0) {
+                        if (workingThreads[i].latency > 0) {
                             workingThreads[i].latency--;
                         }
                     }
@@ -74,14 +74,14 @@ class blockedMT {
                 if (prevthread != threadIndex){
                     cycleNum += switch_cycles;
                     for (int i = 0; i < numThreads; ++i) {
-                        if (!workingThreads[i].done){
+                        if (workingThreads[i].latency > 0){
                             workingThreads[i].latency -= switch_cycles;
                         }
                     }
                 }
 
                 for(int i = 0 ; i < numThreads ; i++) {
-                    if (workingThreads[i].latency != 0) {
+                    if (workingThreads[i].latency > 0) {
                         workingThreads[i].latency--;
                     }
                 }
