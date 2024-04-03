@@ -111,8 +111,7 @@ class blockedMT {
                 }
                 if(currInst.opcode == CMD_SUBI) {
                     //cout << "CMD_SUBI" << endl;
-                    workingThreads[threadIndex].regs.reg[currInst.src1_index]-
-                    currInst.src2_index_imm;
+                    workingThreads[threadIndex].regs.reg[currInst.src1_index]-currInst.src2_index_imm;
                 }
                 if(currInst.opcode == CMD_LOAD) {
                     workingThreads[threadIndex].latency = loadLatency;
@@ -132,8 +131,13 @@ class blockedMT {
                 }
                 if(currInst.opcode == CMD_HALT) {
                     workingThreads[threadIndex].done = true;
-                    numOfWorkingThreads--;
                     //cout << "CMD_HALT" <<endl;
+                }
+                numOfWorkingThreads =0 ;
+                for(int i = 0 ; i < numThreads ; i++) {
+                    if (!workingThreads[i].done) {
+                        numOfWorkingThreads++;
+                    }
                 }
             }
             //cout << "number of cycles: " << cycleNum<<endl;
@@ -219,8 +223,7 @@ public:
 			}
 			if(currInst.opcode == CMD_SUBI) {
 				//cout << "CMD_SUBI" << endl;
-					workingThreads[threadIndex].regs.reg[currInst.src1_index]-
-					currInst.src2_index_imm;
+                workingThreads[threadIndex].regs.reg[currInst.src1_index] - currInst.src2_index_imm;
 			}
 			if(currInst.opcode == CMD_LOAD) {
 				workingThreads[threadIndex].latency = loadLatency;
