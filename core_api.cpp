@@ -133,25 +133,23 @@ void handleMemoryAccess(int MRUThread, threadClass *threads, bool* running_queue
 }
 
 // Decrement latency of waiting threads and handle thread switching if necessary
-void decrementLatencyAndHandleSwitching(threadClass *threads, std::vector<int>& waiting_queue, bool* running_queue,
+void decrementLatencyAndHandleSwitching(bool isfine, threadClass *threads, std::vector<int>& waiting_queue, bool* running_queue,
                                         int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
 
     // Handle thread switching
-    if (num_of_running_threads > 0 && !running_queue[MRUThread]) {
+    if (num_of_running_threads > 0 && !running_queue[MRUThread] && !isfine) {
         MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
-        if (!running_queue[MRUThread]) {
-            cycles_num += switch_cycles;
-            auto it = waiting_queue.begin();
-            while (it != waiting_queue.end()) {
-                threads[*it].latency -= switch_cycles;
-                if (threads[*it].latency <= 0) {
-                    running_queue[*it] = true;
-                    it = waiting_queue.erase(it);/// check may have error
-                    num_of_running_threads++;
-                }
-                else
-                    ++it;
+        cycles_num += switch_cycles;
+        auto it = waiting_queue.begin();
+        while (it != waiting_queue.end()) {
+            threads[*it].latency -= switch_cycles;
+            if (threads[*it].latency <= 0) {
+                running_queue[*it] = true;
+                it = waiting_queue.erase(it);/// check may have error
+                num_of_running_threads++;
             }
+            else
+                ++it;
         }
     }
 }
@@ -194,7 +192,7 @@ public:
             fetchAndExecuteInstruction(inst_num, threads[MRUThread], is_fineGrained, MRUThread, switch_cycles,
             threads_num, cycles_num, num_of_running_threads, num_of_working_threads, waiting_queue, running_queue, load_latency, store_latency);
             handleMemoryAccess(MRUThread, threads,running_queue, num_of_running_threads, waiting_queue);
-            decrementLatencyAndHandleSwitching(threads, waiting_queue, running_queue, num_of_running_threads,
+            decrementLatencyAndHandleSwitching(is_fineGrained, threads, waiting_queue, running_queue, num_of_running_threads,
                                                MRUThread, threads_num, switch_cycles, cycles_num);
             cycles_num++;
         }
