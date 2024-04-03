@@ -50,19 +50,11 @@ class blockedMT {
             while(numOfWorkingThreads) {
                 Instruction currInst ;
                 if(workingThreads[threadIndex].done || workingThreads[threadIndex].latency != 0) {
-                    threadIndex = (threadIndex+1)%numThreads;
                     prevthread = threadIndex;
+                    threadIndex = (threadIndex+1)%numThreads;
                     busyThreadsCount++;
                     if (busyThreadsCount < numThreads){
                         continue;
-                    }
-                }
-                if (prevthread != threadIndex){
-                    cycleNum += switch_cycles;
-                    for (int i = 0; i < numThreads; ++i) {
-                        if (!workingThreads[i].done){
-                            workingThreads[i].latency -= switch_cycles;
-                        }
                     }
                 }
                 //cout <<  cycleNum << "	" ;
@@ -78,6 +70,15 @@ class blockedMT {
                     continue;
                 }
                 busyThreadsCount = 0 ;
+
+                if (prevthread != threadIndex){
+                    cycleNum += switch_cycles;
+                    for (int i = 0; i < numThreads; ++i) {
+                        if (!workingThreads[i].done){
+                            workingThreads[i].latency -= switch_cycles;
+                        }
+                    }
+                }
 
                 for(int i = 0 ; i < numThreads ; i++) {
                     if (workingThreads[i].latency != 0) {
