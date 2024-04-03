@@ -21,6 +21,141 @@ public:
 
 };
 
+void initializeQueues(bool* running_queue, int threads_num,
+                      int& num_of_working_threads, int& num_of_running_threads) {
+    num_of_working_threads = threads_num;
+    num_of_running_threads = threads_num;
+    // Initialize running_queue to indicate all threads are initially running
+    for (int i = 0; i < threads_num; ++i) {
+        running_queue[i] = true;
+    }
+}
+
+int findNextRunningThread(int& MRUThread, int threads_num, bool* running_queue) {
+    for (int i = 1; i < threads_num; ++i) {
+        if (running_queue[(MRUThread + i) % threads_num]) {
+            return (MRUThread + i) % threads_num;
+        }
+    }
+    return MRUThread; // Fallback to current MRUThread if no other threads are running
+}
+
+// Fetch and execute instructions for the most recently used thread
+void fetchAndExecuteInstruction(int& inst_num, threadClass& thread, bool is_fineGrained, int& MRUThread, int switch_cycles,
+    int threads_num, int& cycles_num, int& num_of_running_threads, int& num_of_working_threads,
+    std::vector<int>& waiting_queue, bool* running_queue,int load_latency, int store_latency) {
+    if (!running_queue[MRUThread]) {
+        // Find the next available running thread
+        MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
+    }
+
+    // If the thread is running, execute the next instruction
+    if (running_queue[MRUThread]) {
+        Instruction inst;
+        inst_num++;
+        SIM_MemInstRead(thread.inst_num++, &inst, MRUThread);
+
+        switch (inst.opcode) {
+            case CMD_NOP:
+                break;
+            case CMD_ADD:
+                thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] + thread.regs.reg[inst.src2_index_imm];
+                break;
+            case CMD_ADDI:
+                thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] + inst.src2_index_imm;
+                break;
+            case CMD_SUB:
+                thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] - thread.regs.reg[inst.src2_index_imm];
+                break;
+            case CMD_SUBI:
+                thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] - inst.src2_index_imm;
+                break;
+            case CMD_HALT:
+                running_queue[MRUThread] = false;
+                num_of_running_threads--;
+                num_of_working_threads--;
+                break;
+            case CMD_LOAD: {
+                unsigned addr = thread.regs.reg[inst.src1_index] +
+                                (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
+                SIM_MemDataRead(addr, &(thread.regs.reg[inst.dst_index]));
+                thread.latency = load_latency; // Set thread latency for memory load
+                running_queue[MRUThread] = false;
+                num_of_running_threads--;
+                //waiting_queue.push_back(MRUThread);
+                break;
+            }
+            case CMD_STORE: {
+                unsigned addr = thread.regs.reg[inst.dst_index] +
+                                (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
+                SIM_MemDataWrite(addr, thread.regs.reg[inst.src1_index]);
+                thread.latency = store_latency; // Set thread latency for memory store
+                running_queue[MRUThread] = false;
+                num_of_running_threads--;
+                //waiting_queue.push_back(MRUThread);
+                break;
+            }
+        }
+
+        // Update MRUThread for fine-grained MT
+        if (is_fineGrained) {
+            MRUThread = (MRUThread + 1) % threads_num;
+        }
+
+        // If thread switching is needed and not fine-grained MT, add switch cycles
+        if (!is_fineGrained && num_of_running_threads > 0 && !running_queue[MRUThread]) {
+            MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
+            cycles_num += switch_cycles;
+        }
+    }
+}
+
+// Handle memory accesses and update thread states
+void handleMemoryAccess(int MRUThread, threadClass *threads, bool* running_queue, int& num_of_running_threads, std::vector<int>& waiting_queue) {
+    int removed=-1;
+    if (threads[MRUThread].latency > 0){
+        removed=MRUThread;
+    }
+    auto it = waiting_queue.begin();
+    while (it != waiting_queue.end()) {
+        --threads[*it].latency;
+        if (threads[*it].latency <= 0) {
+            running_queue[*it] = true;
+            it = waiting_queue.erase(it); /// check may have error
+            num_of_running_threads++;
+        }
+        else
+            ++it;
+    }
+    if (removed >= 0) {
+        waiting_queue.push_back(removed);
+    }
+}
+
+// Decrement latency of waiting threads and handle thread switching if necessary
+void decrementLatencyAndHandleSwitching(threadClass *threads, std::vector<int>& waiting_queue, bool* running_queue,
+                                        int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
+
+    // Handle thread switching
+    if (num_of_running_threads > 0 && !running_queue[MRUThread]) {
+        MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
+        if (!running_queue[MRUThread]) {
+            cycles_num += switch_cycles;
+            auto it = waiting_queue.begin();
+            while (it != waiting_queue.end()) {
+                threads[*it].latency -= switch_cycles;
+                if (threads[*it].latency <= 0) {
+                    running_queue[*it] = true;
+                    it = waiting_queue.erase(it);/// check may have error
+                    num_of_running_threads++;
+                }
+                else
+                    ++it;
+            }
+        }
+    }
+}
+
 class coreClass {
 public:
     int threads_num;
@@ -45,140 +180,6 @@ public:
         delete[] threads;
     }
 
-    void initializeQueues(bool* running_queue, int threads_num,
-                          int& num_of_working_threads, int& num_of_running_threads) {
-        num_of_working_threads = threads_num;
-        num_of_running_threads = threads_num;
-        // Initialize running_queue to indicate all threads are initially running
-        for (int i = 0; i < threads_num; ++i) {
-            running_queue[i] = true;
-        }
-    }
-
-    int findNextRunningThread(int MRUThread, int threads_num, bool* running_queue) {
-        for (int i = 1; i < threads_num; ++i) {
-            if (running_queue[(MRUThread + i) % threads_num]) {
-                return (MRUThread + i) % threads_num;
-            }
-        }
-        return MRUThread; // Fallback to current MRUThread if no other threads are running
-    }
-
-// Fetch and execute instructions for the most recently used thread
-    void fetchAndExecuteInstruction(threadClass& thread, bool is_fineGrained, int& MRUThread, int switch_cycles,
-        int threads_num, int& cycles_num, int& num_of_running_threads, int& num_of_working_threads, std::vector<int>& waiting_queue, bool* running_queue) {
-        if (!running_queue[MRUThread]) {
-            // Find the next available running thread
-            MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
-        }
-
-        // If the thread is running, execute the next instruction
-        if (running_queue[MRUThread]) {
-            Instruction inst;
-            inst_num++;
-            SIM_MemInstRead(thread.inst_num++, &inst, MRUThread);
-
-            switch (inst.opcode) {
-                case CMD_NOP:
-                    break;
-                case CMD_ADD:
-                    thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] + thread.regs.reg[inst.src2_index_imm];
-                    break;
-                case CMD_ADDI:
-                    thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] + inst.src2_index_imm;
-                    break;
-                case CMD_SUB:
-                    thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] - thread.regs.reg[inst.src2_index_imm];
-                    break;
-                case CMD_SUBI:
-                    thread.regs.reg[inst.dst_index] = thread.regs.reg[inst.src1_index] - inst.src2_index_imm;
-                    break;
-                case CMD_HALT:
-                    running_queue[MRUThread] = false;
-                    num_of_running_threads--;
-                    num_of_working_threads--;
-                    break;
-                case CMD_LOAD: {
-                    unsigned addr = thread.regs.reg[inst.src1_index] +
-                                    (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
-                    SIM_MemDataRead(addr, &(thread.regs.reg[inst.dst_index]));
-                    thread.latency = load_latency; // Set thread latency for memory load
-                    running_queue[MRUThread] = false;
-                    num_of_running_threads--;
-                    //waiting_queue.push_back(MRUThread);
-                    break;
-                }
-                case CMD_STORE: {
-                    unsigned addr = thread.regs.reg[inst.dst_index] +
-                                    (inst.isSrc2Imm ? inst.src2_index_imm : thread.regs.reg[inst.src2_index_imm]);
-                    SIM_MemDataWrite(addr, thread.regs.reg[inst.src1_index]);
-                    thread.latency = store_latency; // Set thread latency for memory store
-                    running_queue[MRUThread] = false;
-                    num_of_running_threads--;
-                    //waiting_queue.push_back(MRUThread);
-                    break;
-                }
-            }
-
-            // Update MRUThread for fine-grained MT
-            if (is_fineGrained) {
-                MRUThread = (MRUThread + 1) % threads_num;
-            }
-
-            // If thread switching is needed and not fine-grained MT, add switch cycles
-            if (!is_fineGrained && num_of_running_threads > 0 && !running_queue[MRUThread]) {
-                MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
-                cycles_num += switch_cycles;
-            }
-        }
-    }
-
-// Handle memory accesses and update thread states
-    void handleMemoryAccess(bool* running_queue, int& num_of_running_threads, std::vector<int>& waiting_queue) {
-        int removed=-1;
-        if (threads[MRUThread].latency > 0){
-            removed=MRUThread;
-        }
-        auto it = waiting_queue.begin();
-        while (it != waiting_queue.end()) {
-            --threads[*it].latency;
-            if (threads[*it].latency <= 0) {
-                running_queue[*it] = true;
-                it = waiting_queue.erase(it); /// check may have error
-                num_of_running_threads++;
-            }
-            else
-                ++it;
-        }
-        if (removed >= 0) {
-            waiting_queue.push_back(removed);
-        }
-    }
-
-// Decrement latency of waiting threads and handle thread switching if necessary
-    void decrementLatencyAndHandleSwitching(std::vector<int>& waiting_queue, bool* running_queue,
-        int& num_of_running_threads, int& MRUThread, int threads_num, int switch_cycles, int& cycles_num) {
-
-        // Handle thread switching
-        if (num_of_running_threads > 0 && !running_queue[MRUThread]) {
-            MRUThread = findNextRunningThread(MRUThread, threads_num, running_queue);
-            if (!running_queue[MRUThread]) {
-                cycles_num += switch_cycles;
-                auto it = waiting_queue.begin();
-                while (it != waiting_queue.end()) {
-                    threads[*it].latency -= switch_cycles;
-                    if (threads[*it].latency <= 0) {
-                        running_queue[*it] = true;
-                        it = waiting_queue.erase(it);/// check may have error
-                        num_of_running_threads++;
-                    }
-                    else
-                        ++it;
-                }
-            }
-        }
-    }
-
     void executeAllInstructions() {
         bool* running_queue = new bool[threads_num];
         std::vector<int> waiting_queue;
@@ -190,10 +191,10 @@ public:
 
         // Main execution loop
         while (num_of_working_threads > 0) {
-            fetchAndExecuteInstruction(threads[MRUThread], is_fineGrained, MRUThread, switch_cycles,
-                                       threads_num, cycles_num, num_of_running_threads, num_of_working_threads, waiting_queue, running_queue);
-            handleMemoryAccess(running_queue, num_of_running_threads, waiting_queue);
-            decrementLatencyAndHandleSwitching(waiting_queue, running_queue, num_of_running_threads,
+            fetchAndExecuteInstruction(inst_num, threads[MRUThread], is_fineGrained, MRUThread, switch_cycles,
+            threads_num, cycles_num, num_of_running_threads, num_of_working_threads, waiting_queue, running_queue, load_latency, store_latency);
+            handleMemoryAccess(MRUThread, threads,running_queue, num_of_running_threads, waiting_queue);
+            decrementLatencyAndHandleSwitching(threads, waiting_queue, running_queue, num_of_running_threads,
                                                MRUThread, threads_num, switch_cycles, cycles_num);
             cycles_num++;
         }
