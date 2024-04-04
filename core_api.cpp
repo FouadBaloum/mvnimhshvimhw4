@@ -12,14 +12,13 @@ public:
     int latency;
     bool done;
     tcontext regs;
-    unsigned inst_num;
+    int inst_num;
 
     explicit Thread(int id=0): id(id), latency(0),inst_num(0) , done(false){
         for (int i = 0; i < REGS_COUNT; ++i) {
             regs.reg[i] =0;
         }
     }
-
 };
 
 class blockedMT {
@@ -57,7 +56,6 @@ public:
                     continue;
                 }
             }
-            //cout <<  cycleNum << "	" ;
             if(busyThreadsCount >= numThreads) {
                 //cout << "CMD_NOP" << endl;
                 for(int i = 0 ; i < numThreads ; i++) {
@@ -89,9 +87,6 @@ public:
             SIM_MemInstRead(workingThreads[threadIndex].inst_num++, &currInst, workingThreads[threadIndex].id);
             instCount++;
             cycleNum++;
-            if(currInst.opcode == CMD_NOP) {
-                //cout << "CMD_NOP" << endl;
-            }
             if(currInst.opcode == CMD_ADD) {
                 //cout << "CMD_ADD" <<endl;
                 workingThreads[threadIndex].regs.reg[currInst.dst_index]=
@@ -107,27 +102,24 @@ public:
             if(currInst.opcode == CMD_ADDI) {
                 //cout << "CMD_ADDI" <<endl;
                 workingThreads[threadIndex].regs.reg[currInst.dst_index]=
-                        workingThreads[threadIndex].regs.reg[currInst.src1_index]+
-                        currInst.src2_index_imm;
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index] + currInst.src2_index_imm;
             }
             if(currInst.opcode == CMD_SUBI) {
                 //cout << "CMD_SUBI" << endl;
                 workingThreads[threadIndex].regs.reg[currInst.dst_index]=
-                        workingThreads[threadIndex].regs.reg[currInst.src1_index]-currInst.src2_index_imm;
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index] - currInst.src2_index_imm;
             }
             if(currInst.opcode == CMD_LOAD) {
                 workingThreads[threadIndex].latency = loadLatency;
                 unsigned addr = workingThreads[threadIndex].regs.reg[currInst.src1_index] +
-                                (currInst.isSrc2Imm ? currInst.src2_index_imm
-                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                (currInst.isSrc2Imm ? currInst.src2_index_imm: workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
                 SIM_MemDataRead(addr, &(workingThreads[threadIndex].regs.reg[currInst.dst_index]));
                 //cout << "CMD_LOAD" <<endl;
             }
             if(currInst.opcode == CMD_STORE) {
                 workingThreads[threadIndex].latency = storeLatency;
                 unsigned addr = workingThreads[threadIndex].regs.reg[currInst.dst_index] +
-                                (currInst.isSrc2Imm ? currInst.src2_index_imm
-                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                (currInst.isSrc2Imm ? currInst.src2_index_imm: workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
                 SIM_MemDataWrite(addr, workingThreads[threadIndex].regs.reg[currInst.src1_index]);
                 //cout << "CMD_STORE" << endl;
             }
@@ -196,10 +188,7 @@ public:
             //cout <<  threadIndex << "	" ;
             SIM_MemInstRead(workingThreads[threadIndex].inst_num++, &currInst, workingThreads[threadIndex].id);
             instCount++;
-
-            if(currInst.opcode == CMD_NOP) {
-                //cout << "CMD_NOP" << endl;
-            }
+            
             if(currInst.opcode == CMD_ADD) {
                 //cout << "CMD_ADD" <<endl;
                 workingThreads[threadIndex].regs.reg[currInst.dst_index]=
@@ -215,8 +204,7 @@ public:
             if(currInst.opcode == CMD_ADDI) {
                 //cout << "CMD_ADDI" <<endl;
                 workingThreads[threadIndex].regs.reg[currInst.dst_index]=
-                        workingThreads[threadIndex].regs.reg[currInst.src1_index]+
-                        currInst.src2_index_imm;
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index] + currInst.src2_index_imm;
             }
             if(currInst.opcode == CMD_SUBI) {
                 //cout << "CMD_SUBI" << endl;
@@ -226,16 +214,14 @@ public:
             if(currInst.opcode == CMD_LOAD) {
                 workingThreads[threadIndex].latency = loadLatency;
                 unsigned addr = workingThreads[threadIndex].regs.reg[currInst.src1_index] +
-                                (currInst.isSrc2Imm ? currInst.src2_index_imm
-                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                (currInst.isSrc2Imm ? currInst.src2_index_imm: workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
                 SIM_MemDataRead(addr, &(workingThreads[threadIndex].regs.reg[currInst.dst_index]));
                 //cout << "CMD_LOAD" <<endl;
             }
             if(currInst.opcode == CMD_STORE) {
                 workingThreads[threadIndex].latency = storeLatency;
                 unsigned addr = workingThreads[threadIndex].regs.reg[currInst.dst_index] +
-                                (currInst.isSrc2Imm ? currInst.src2_index_imm
-                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                (currInst.isSrc2Imm ? currInst.src2_index_imm: workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
                 SIM_MemDataWrite(addr, workingThreads[threadIndex].regs.reg[currInst.src1_index]);
                 //cout << "CMD_STORE" << endl;
             }
