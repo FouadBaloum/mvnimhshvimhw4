@@ -112,7 +112,8 @@ public:
             }
             if(currInst.opcode == CMD_SUBI) {
                 //cout << "CMD_SUBI" << endl;
-                workingThreads[threadIndex].regs.reg[currInst.src1_index]-currInst.src2_index_imm;
+                workingThreads[threadIndex].regs.reg[currInst.dst_index]=
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index]-currInst.src2_index_imm;
             }
             if(currInst.opcode == CMD_LOAD) {
                 workingThreads[threadIndex].latency = loadLatency;
@@ -224,7 +225,8 @@ public:
             }
             if(currInst.opcode == CMD_SUBI) {
                 //cout << "CMD_SUBI" << endl;
-                workingThreads[threadIndex].regs.reg[currInst.src1_index] - currInst.src2_index_imm;
+                workingThreads[threadIndex].regs.reg[currInst.dst_index]=
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index] - currInst.src2_index_imm;
             }
             if(currInst.opcode == CMD_LOAD) {
                 workingThreads[threadIndex].latency = loadLatency;
