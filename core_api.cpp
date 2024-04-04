@@ -50,7 +50,7 @@ class blockedMT {
             while(numOfWorkingThreads) {
                 Instruction currInst ;
                 if(workingThreads[threadIndex].done || workingThreads[threadIndex].latency > 0) {
-                    prevthread = threadIndex;
+                    //prevthread = threadIndex;
                     threadIndex = (threadIndex+1)%numThreads;
                     busyThreadsCount++;
                     if (busyThreadsCount < numThreads){
@@ -58,7 +58,6 @@ class blockedMT {
                     }
                 }
                 //cout <<  cycleNum << "	" ;
-                cycleNum++;
                 if(busyThreadsCount >= numThreads) {
                     //cout << "CMD_NOP" << endl;
                     for(int i = 0 ; i < numThreads ; i++) {
@@ -67,6 +66,7 @@ class blockedMT {
                         }
                     }
                     busyThreadsCount= 0;
+                    cycleNum++;
                     continue;
                 }
                 busyThreadsCount = 0 ;
@@ -79,7 +79,7 @@ class blockedMT {
                         }
                     }
                 }
-
+                prevthread = threadIndex;
                 for(int i = 0 ; i < numThreads ; i++) {
                     if (workingThreads[i].latency > 0) {
                         workingThreads[i].latency--;
@@ -88,7 +88,7 @@ class blockedMT {
                 //cout <<  threadIndex << "	" ;
                 SIM_MemInstRead(workingThreads[threadIndex].inst_num++, &currInst, workingThreads[threadIndex].id);
                 instCount++;
-
+                cycleNum++;
                 if(currInst.opcode == CMD_NOP) {
                     //cout << "CMD_NOP" << endl;
                 }

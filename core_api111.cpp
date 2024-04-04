@@ -16,9 +16,10 @@ class singleThread{
 public:
     int tid;
     int latency;
+    bool done;
     tcontext regs;
     unsigned inst_num;
-    explicit singleThread(int tid=0): tid(tid), latency(0),inst_num(0){ ///check regs isn't initialize
+    explicit singleThread(int tid=0): tid(tid), latency(0),inst_num(0),done(false){
         for (int i = 0; i < REGS_COUNT; ++i) {
             regs.reg[i] =0;
         }
@@ -26,7 +27,7 @@ public:
 
 };
 
-class singleCore{
+class blockedCore{
 public:
     int threads_num;
     singleThread* threads;
@@ -37,14 +38,14 @@ public:
     int store_latency;
     int switch_cycles;
     bool is_fineGrained;
-    singleCore(int threadNum,bool is_fineGrained ,int switch_latency=0) : threads_num(threadNum), threads(new singleThread[threadNum]),
+    blockedCore(int threadNum,bool is_fineGrained ,int switch_latency=0) : threads_num(threadNum), threads(new singleThread[threadNum]),
      MRUThread(0), cycles_num(0), inst_num(0),
     load_latency(SIM_GetLoadLat()), store_latency(SIM_GetStoreLat()),switch_cycles(switch_latency),is_fineGrained(is_fineGrained){
          for (int i = 0; i < threadNum; ++i) {
              threads[i] = singleThread(i);
          }
      }
-    ~singleCore(){
+    ~blockedCore(){
          delete[] threads;
      }
 
@@ -166,17 +167,130 @@ public:
      }
 };
 
-singleCore* block_core;
-singleCore* fine_grained_core;
+class fineGrainedMt {
+public:
+    int numThreads ;
+    int loadLatency ;
+    int storeLatency;
+    double cycleNum;
+    double instCount;
+    singleThread* workingThreads;
+
+    fineGrainedMt():numThreads(SIM_GetThreadsNum()), loadLatency(SIM_GetLoadLat()), storeLatency(SIM_GetStoreLat()),
+                    cycleNum(0),instCount(0),workingThreads(new singleThread[numThreads]) {
+        for (int i = 0; i < numThreads; i++) {
+            workingThreads[i] = singleThread(i);
+        }
+    }
+    ~fineGrainedMt(){
+        delete[] workingThreads;
+    }
+
+    void executeInst() {
+        int numOfWorkingThreads = numThreads;
+        int threadIndex = 0;
+        int busyThreadsCount = 0;
+        while(numOfWorkingThreads) {
+            Instruction currInst ;
+            if(workingThreads[threadIndex].done || workingThreads[threadIndex].latency != 0) {
+                threadIndex = (threadIndex+1)%numThreads;
+                busyThreadsCount++;
+                if (busyThreadsCount < numThreads){
+                    continue;
+                }
+            }
+            //cout <<  cycleNum << "	" ;
+            cycleNum++;
+            if(busyThreadsCount >= numThreads) {
+                //cout << "CMD_NOP" << endl;
+                for(int i = 0 ; i < numThreads ; i++) {
+                    if (workingThreads[i].latency != 0) {
+                        workingThreads[i].latency--;
+                    }
+                }
+                busyThreadsCount= 0;
+                continue;
+            }
+            busyThreadsCount = 0 ;
+
+            for(int i = 0 ; i < numThreads ; i++) {
+                if (workingThreads[i].latency != 0) {
+                    workingThreads[i].latency--;
+                }
+            }
+
+            //cout <<  threadIndex << "	" ;
+            SIM_MemInstRead(workingThreads[threadIndex].inst_num++, &currInst, workingThreads[threadIndex].tid);
+            instCount++;
+
+            if(currInst.opcode == CMD_NOP) {
+                //cout << "CMD_NOP" << endl;
+            }
+            if(currInst.opcode == CMD_ADD) {
+                //cout << "CMD_ADD" <<endl;
+                workingThreads[threadIndex].regs.reg[currInst.dst_index]=
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index]+
+                        workingThreads[threadIndex].regs.reg[currInst.src2_index_imm];
+            }
+            if(currInst.opcode == CMD_SUB) {
+                //cout << "CMD_SUB" << endl;
+                workingThreads[threadIndex].regs.reg[currInst.dst_index]=
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index]-
+                        workingThreads[threadIndex].regs.reg[currInst.src2_index_imm];
+            }
+            if(currInst.opcode == CMD_ADDI) {
+                //cout << "CMD_ADDI" <<endl;
+                workingThreads[threadIndex].regs.reg[currInst.dst_index]=
+                        workingThreads[threadIndex].regs.reg[currInst.src1_index]+
+                        currInst.src2_index_imm;
+            }
+            if(currInst.opcode == CMD_SUBI) {
+                //cout << "CMD_SUBI" << endl;
+                workingThreads[threadIndex].regs.reg[currInst.src1_index] - currInst.src2_index_imm;
+            }
+            if(currInst.opcode == CMD_LOAD) {
+                workingThreads[threadIndex].latency = loadLatency;
+                unsigned addr = workingThreads[threadIndex].regs.reg[currInst.src1_index] +
+                                (currInst.isSrc2Imm ? currInst.src2_index_imm
+                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                SIM_MemDataRead(addr, &(workingThreads[threadIndex].regs.reg[currInst.dst_index]));
+                //cout << "CMD_LOAD" <<endl;
+            }
+            if(currInst.opcode == CMD_STORE) {
+                workingThreads[threadIndex].latency = storeLatency;
+                unsigned addr = workingThreads[threadIndex].regs.reg[currInst.dst_index] +
+                                (currInst.isSrc2Imm ? currInst.src2_index_imm
+                                                    : workingThreads[threadIndex].regs.reg[currInst.src2_index_imm]);
+                SIM_MemDataWrite(addr, workingThreads[threadIndex].regs.reg[currInst.src1_index]);
+                //cout << "CMD_STORE" << endl;
+            }
+            if(currInst.opcode == CMD_HALT) {
+                workingThreads[threadIndex].done = true;
+                //cout << "CMD_HALT" <<endl;
+            }
+            threadIndex = (threadIndex+1) % numThreads;
+            numOfWorkingThreads =0 ;
+            for(int i = 0 ; i < numThreads ; i++) {
+                if (!workingThreads[i].done) {
+                    numOfWorkingThreads++;
+                }
+            }
+        }
+        //cout << "number of cycles: " << cycleNum<<endl;
+    }
+};
+
+blockedCore* block_core;
+fineGrainedMt* fine_grained_core;
 
 void CORE_BlockedMT() {
-    block_core = new singleCore(SIM_GetThreadsNum(), false,SIM_GetSwitchCycles());
+    block_core = new blockedCore(SIM_GetThreadsNum(),true,SIM_GetSwitchCycles());
     block_core->executeAllInstructions();
 }
 
 void CORE_FinegrainedMT() {
-    fine_grained_core = new singleCore(SIM_GetThreadsNum(),true);
-    fine_grained_core->executeAllInstructions();
+    fine_grained_core = new fineGrainedMt();
+    fine_grained_core->executeInst();
 }
 
 double CORE_BlockedMT_CPI(){
@@ -190,8 +304,8 @@ double CORE_BlockedMT_CPI(){
 
 double CORE_FinegrainedMT_CPI(){
     double tmp=0;
-    if (fine_grained_core->inst_num >0)
-         tmp = double (fine_grained_core->cycles_num)/ double (fine_grained_core->inst_num);
+    if (fine_grained_core->instCount >0)
+         tmp = double (fine_grained_core->cycleNum)/ double (fine_grained_core->instCount);
     delete fine_grained_core;
     return tmp;
 }
@@ -204,6 +318,6 @@ void CORE_BlockedMT_CTX(tcontext* context, int threadid) {
 
 void CORE_FinegrainedMT_CTX(tcontext* context, int threadid) {
     for (int i = 0; i < REGS_COUNT; ++i) {
-        context[threadid].reg[i]= fine_grained_core->threads[threadid].regs.reg[i];
+        context[threadid].reg[i]= fine_grained_core->workingThreads[threadid].regs.reg[i];
     }
 }
