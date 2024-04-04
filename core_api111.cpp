@@ -40,16 +40,16 @@ public:
              threads[i] = singleThread(i);
          }
      }
-    bool* running_queue= new bool[threads_num];
-    vector<int> waiting_queue;
-    int num_of_working_threads=threads_num;
-    int num_of_running_threads=threads_num;
 
     ~singleCore(){
          delete[] threads;
      }
 
      void executeAllInstructions(){
+         bool* running_queue= new bool[threads_num];
+         vector<int> waiting_queue;
+         int num_of_working_threads=threads_num;
+         int num_of_running_threads=threads_num;
          for (int i = 0; i < threads_num; ++i) {
              running_queue[i] = true;
          }
@@ -118,7 +118,7 @@ public:
                     MRUThread = (MRUThread+1)%threads_num;
                  }
              }
-             update(waiting_queue,1);
+             update(running_queue,waiting_queue,1,num_of_running_threads);
              if (removed_thread >=0) {
                  waiting_queue.push_back(removed_thread);
              }
@@ -132,7 +132,7 @@ public:
                              }
                          }
                          cycles_num += switch_cycles;
-                         update(waiting_queue,switch_cycles);
+                         update(running_queue,waiting_queue,switch_cycles,num_of_running_threads);
                      }
                  }
              }
@@ -141,14 +141,14 @@ public:
         delete[] running_queue;
      }
 
-     void update(vector<int> queue,int penalty){
+     void update(bool* rqueue, vector<int> queue, int penalty, int& number){
          auto it = queue.begin();
          while (it != queue.end()) {
              threads[*it].latency -= penalty;
              if (threads[*it].latency <= 0) {
-                 running_queue[*it] = true;
+                 rqueue[*it] = true;
                  it = queue.erase(it);
-                 num_of_running_threads++;
+                 number++;
              }
              else
                  ++it;
